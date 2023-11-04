@@ -12,6 +12,9 @@ active_chats = {}
 def start_chat(operator_id, user_id):
     active_chats[operator_id] = user_id
 
+# def is_chat_started(operator_id, user_id):
+#     return True if active_chats[operator_id] = user_id else False
+
 
 def end_chat(operator_id):
     if operator_id in active_chats:
