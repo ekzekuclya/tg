@@ -126,8 +126,6 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
         await msg.forward(order.operator.user_id)
 
 
-
-
 @router.message(Chat.operator)
 async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
 
@@ -146,12 +144,6 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
         order.save()
     if order.is_active:
         await bot.send_message(order.user.user_id, message.text, reply_markup=kb.exit_kb)
-
-
-
-
-# @router.message(OrderToOperator.awaiting_kvitto)
-# async def awaiting_crypto(msg: Message, state: FSMContext):
 
 
 @router.message(BuyCryptoStates.awaiting_crypto_amount)
@@ -229,6 +221,3 @@ async def send_users(msg: Message):
                 count += 1
     else:
         await msg.answer("У вас нет прав!")
-
-
-

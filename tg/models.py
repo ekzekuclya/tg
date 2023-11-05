@@ -21,3 +21,13 @@ class Order(models.Model):
     is_active = models.BooleanField(default=True)
 
 
+class Exchange(models.Model):
+    user = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
+    ltc_amount = models.DecimalField(max_digits=10, decimal_places=4)
+    kgs_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    crypto = 
+    exchange_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - LTC to KGS Exchange"
