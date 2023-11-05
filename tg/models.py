@@ -19,3 +19,5 @@ class Order(models.Model):
                                  default=None)
     user = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="user")
     is_active = models.BooleanField(default=True)
+
+

@@ -44,6 +44,10 @@ class SendTextState(StatesGroup):
     awaiting_text = State()
 
 
+class OrderToOperator(StatesGroup):
+    awaiting_kvitto = State()
+
+
 class Chat(StatesGroup):
     user = State()
     operator = State()
@@ -60,11 +64,10 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         await state.update_data(crypto_symbol=crypto_symbol)
         await state.set_state(BuyCryptoStates.awaiting_crypto_amount)
 
-
-
     if callback_query.data == "confirm_purchase_ltc":
         await callback_query.message.answer(f"Отправьте на счёт YOURADMIN OPTIMA: 43255346346345\n"
                                             f"Время ожидания 30 МИНУТ")
+        await state.set_state(OrderToOperator.awaiting_kvitto)
     if callback_query.data == "cancel_purchase":
         await callback_query.message.answer("Меню", reply_markup=kb.menu)
     if callback_query.data == "menu":
@@ -86,20 +89,16 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         orders = await sync_to_async(Order.objects.filter)(is_active=True, operator=None)
         order = orders.first()
         operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
-        # print("ORDER OPERATOR TAKE ORDER", order.operator)
-        if order and order.operator is None:
+        if order is None:
+            await callback_query.message.answer("Ордер уже забрали")
+            await state.clear()
+        else:
             order.operator = operator
             order.save()
             operator.is_active = False
             operator.save()
             await state.set_state(Chat.operator)
-            await callback_query.message.edit_text("Вы забрали ордер! \nМожете писать сообщение!")
-        if order is None:
-            operator.is_active = True
-            operator.save()
-            await callback_query.message.delete()
-            await callback_query.message.answer("Ордер уже забрали")
-            await state.clear()
+            await callback_query.message.edit_text("Вы забрали ордер, можете начать писать!")
 
 
 @router.message(Chat.user)
@@ -114,32 +113,45 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
             print("ВНУТРИ ЦИКЛА ОПЕРАТОРС")
             await msg.forward(operator.user_id)
 
-    if order.operator:
-        await msg.forward(order.operator.user_id)
-
     if msg.text == "EXIT":
         order.is_active = False
         order.operator.is_active = True
-        order.save()
         order.operator.save()
+        order.save()
         await msg.answer("Вы вышли из чата")
+        await bot.send_message(order.operator.user_id, "Пользователь вышел из чата")
         await state.clear()
+
+    if order.operator:
+        await msg.forward(order.operator.user_id)
+
+
 
 
 @router.message(Chat.operator)
 async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
+
     operator = await sync_to_async(TelegramUser.objects.get)(user_id=message.from_user.id)
-    order = await sync_to_async(Order.objects.get)(operator=operator, is_active=True)
-    print("CHAT OPERATOR", operator.username, order.is_active, order.user, order.operator)
-    if order.is_active:
-        await bot.send_message(order.user.user_id, message.text, reply_markup=kb.exit_kb)
-    else:
-        order.is_active = False
-        order.save()
+    orders = await sync_to_async(Order.objects.filter)(operator=operator, is_active=True)
+    order = orders.first()
+    if order is None:
+        await state.clear()
         operator.is_active = True
         operator.save()
-
+    if message.text == "EXIT":
         await state.clear()
+        operator.is_active = True
+        order.is_active = False
+        operator.save()
+        order.save()
+    if order.is_active:
+        await bot.send_message(order.user.user_id, message.text, reply_markup=kb.exit_kb)
+
+
+
+
+# @router.message(OrderToOperator.awaiting_kvitto)
+# async def awaiting_crypto(msg: Message, state: FSMContext):
 
 
 @router.message(BuyCryptoStates.awaiting_crypto_amount)
@@ -155,7 +167,6 @@ async def process_crypto_amount(msg: Message, state: FSMContext):
                 reply_markup=kb.buy_btc if crypto_symbol == "btc" else kb.buy_ltc)
         except ValueError:
             await msg.answer("Пожалуйста, введите корректное количество криптовалюты (число).")
-
 
 
 @router.message(Command("send"))
@@ -210,8 +221,12 @@ async def send_users(msg: Message):
         users = await sync_to_async(TelegramUser.objects.all)()
         count = 1
         for user in users:
-            await msg.answer(f"{count} {user.username}")
-            count += 1
+            if user.is_admin:
+                await msg.answer(f"{count} {user.username} ------ HAS ADMIN PERMISSIONS")
+                count +=1
+            else:
+                await msg.answer(f"{count} {user.username}")
+                count += 1
     else:
         await msg.answer("У вас нет прав!")
 

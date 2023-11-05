@@ -10,3 +10,4 @@ class TelegramAdmin(admin.ModelAdmin):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ['id']
+    list_filter = ['is_active']
