@@ -10,10 +10,7 @@ class TelegramUser(models.Model):
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
-    def __str__(self):
-        return self.username
-
-
+    
 class Chat(models.Model):
     operator = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="oper",
                                  default=None)

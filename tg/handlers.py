@@ -162,7 +162,7 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
         for operator in operators:
             print("ВНУТРИ ЦИКЛА ОПЕРАТОРС")
             await msg.forward(operator.user_id)
-            await bot.send_message()
+
 
     if msg.text == "EXIT":
         order.user.remove(user)
