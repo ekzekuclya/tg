@@ -63,6 +63,7 @@ class OrderToOperator(StatesGroup):
 class Chat(StatesGroup):
     user = State()
     operator = State()
+    user_id = []
 
 
 class OperatorAdd(StatesGroup):
@@ -162,7 +163,7 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
             await msg.forward(operator.user_id)
 
     if msg.text == "EXIT":
-        order.user.delete(user)
+        order.user.remove(user)
         # order.save(update_fields=[order.user])
         order.save()
         await msg.answer("Вы вышли из чата")
@@ -175,6 +176,12 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
 
         tg_message.order = order
         tg_message.save()
+        users = order.user.all()
+        keyboard = []
+
+        # for user in users:
+        #     keyboard.append([KeyboardButton(text=f"{user.username}")])
+        #     markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
         await msg.forward(order.operator.user_id)
 
 
@@ -183,12 +190,7 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
     operator = await sync_to_async(TelegramUser.objects.get)(user_id=message.from_user.id)
     order = await sync_to_async(Order.objects.get)(operator=operator, is_active=True)
     replied_message = message.reply_to_message
-    # users = order.user.all()
-    # keyboard = []
-    #
-    # for user in users:
-    #     keyboard.append([KeyboardButton(text=f"{user.username}")])
-    #     markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+
     if order.user.count() == 1:
         user = order.user.first()
         await bot.send_message(user.user_id, message.text)
