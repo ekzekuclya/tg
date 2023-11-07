@@ -294,6 +294,7 @@ async def add_permission(msg: Message, state: FSMContext):
     )
     await state.set_state(OperatorAdd.awaiting_user_id)
 
+
 @router.message(OperatorAdd.awaiting_user_id)
 async def awaiting_user_id(msg: Message, state: FSMContext):
     try:
@@ -302,6 +303,6 @@ async def awaiting_user_id(msg: Message, state: FSMContext):
         user.is_admin = True
         user.save()
         await msg.answer("Пользователь добавлен в операторы")
-        state.clear()
+        await state.clear()
     except Exception:
         await msg.answer("Произошла ошибка")
