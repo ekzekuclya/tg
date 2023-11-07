@@ -138,6 +138,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
         print("CALLBACK USER", user_id)
         is_user_in_chat = return_bool(user)
+        print(is_user_in_chat)
         if user_id is None:
             await callback_query.message.answer("Ордер уже забрали")
             await state.clear()
