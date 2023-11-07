@@ -15,8 +15,7 @@ from django.db import IntegrityError
 
 from . import config, kb, text, chat
 from .models import TelegramUser, Chat as Order, Exchange, CurrentUsdtCourse, TGMessage
-from .utils import get_ltc_price, get_crypto_price
-
+from .utils import get_ltc_price, get_crypto_price, return_bool
 
 router = Router()
 
@@ -25,15 +24,10 @@ router = Router()
 @router.message(Command("start"))
 async def start_handler(msg: Message, state: FSMContext):
     user_id = msg.from_user.id
-    first_name = msg.from_user.first_name
-    last_name = msg.from_user.last_name
-    username = msg.from_user.username
+
 
     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
         user_id=user_id,
-        first_name=first_name,
-        last_name=last_name,
-        username=username
     )
     if user.is_admin:
         await state.set_state(Chat.operator)
@@ -42,6 +36,13 @@ async def start_handler(msg: Message, state: FSMContext):
     if created:
         print("NEW USER ADDED")
         print(user.first_name, user.username)
+
+    if not created:
+        user.first_name = msg.from_user.first_name
+        user.last_name = msg.from_user.last_name
+        user.username = msg.from_user.username
+        user.save()
+
     # if user.is_admin:
     #     await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=)
     await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=kb.menu,
@@ -132,18 +133,22 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
     if callback_query.data.startswith("take_order_"):
         operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
         order, _ = await sync_to_async(Order.objects.get_or_create)(is_active=True, operator=operator)
-        user_id = int(callback_query.data.split("_")[2])
-        print("CALLBACK USER", user_id)
 
+        user_id = int(callback_query.data.split("_")[2])
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
+        print("CALLBACK USER", user_id)
+        is_user_in_chat = return_bool(user)
         if user_id is None:
             await callback_query.message.answer("Ордер уже забрали")
             await state.clear()
-        else:
+        if not is_user_in_chat:
             user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
             order.user.add(user)
             order.save()
             await state.set_state(Chat.operator)
             await callback_query.message.edit_text("Вы забрали ордер, можете начать писать!")
+        if is_user_in_chat:
+            await callback_query.message.answer("Ордер уже забрали")
 
 
 @router.message(Chat.user)
@@ -284,6 +289,7 @@ async def send_users(msg: Message):
         for user in users:
             if user.is_admin:
                 await msg.answer(text=f"{count} {user.username} ------ HAS ADMIN PERMISSIONS", parse_mode=None)
+                count += 1
             else:
                 await msg.answer(text=f"{count} {user.username}", parse_mode=None)
                 count += 1

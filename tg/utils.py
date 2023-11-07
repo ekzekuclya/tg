@@ -1,4 +1,6 @@
 import requests
+from asgiref.sync import sync_to_async
+from .models import Chat
 
 
 def get_ltc_price():
@@ -32,3 +34,11 @@ async def get_crypto_price(crypto_symbol, usdt):
     crypto_to_usd = data[crypto_key]['usd']
     crypto_to_kgs = crypto_to_usd * usdt
     return crypto_to_kgs
+
+
+async def return_bool(user):
+    chats = await sync_to_async(Chat.objects.filter)(is_active=True)
+    for i in chats:
+        if user in i.user.all():
+            return False
+    return True
