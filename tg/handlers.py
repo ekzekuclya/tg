@@ -112,7 +112,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
     if callback_query.data == "menu":
         await callback_query.message.edit_text(text.greet.format(name=callback_query.from_user.full_name), reply_markup=kb.menu)
     if callback_query.data == "operator":
-
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
         await state.set_state(Chat.user)
         user_info = {
             "user_id": callback_query.from_user.id,
@@ -121,6 +121,8 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         orders = await sync_to_async(Order.objects.filter)(is_active=True)
 
         for order in orders:
+            if user in order.user.all():
+                order.user.remove(user)
             take_order_callback_data = f"take_order_{callback_query.from_user.id}"
             order_i = [[InlineKeyboardButton(text="Взять", callback_data=take_order_callback_data)]]
             order_kb = InlineKeyboardMarkup(inline_keyboard=order_i)
