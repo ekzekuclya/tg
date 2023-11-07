@@ -37,6 +37,7 @@ async def start_handler(msg: Message, state: FSMContext):
     )
     if user.is_admin:
         await state.set_state(Chat.operator)
+        order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
     if created:
         print("NEW USER ADDED")
         print(user.first_name, user.username)
@@ -161,6 +162,7 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
         for operator in operators:
             print("ВНУТРИ ЦИКЛА ОПЕРАТОРС")
             await msg.forward(operator.user_id)
+            await bot.send_message()
 
     if msg.text == "EXIT":
         order.user.remove(user)
