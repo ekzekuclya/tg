@@ -24,4 +24,5 @@ exchange_data = (""
                  "")
 
 
-
+all_users_admin = "{count} {user_username} ------ HAS ADMIN PERMISSIONS"
+all_users = "{count} {user_username}"

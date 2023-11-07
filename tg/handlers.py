@@ -278,10 +278,10 @@ async def send_users(msg: Message):
         count = 1
         for user in users:
             if user.is_admin:
-                await msg.answer(f"{count} {user.username} ------ HAS ADMIN PERMISSIONS")
+                await msg.answer(text.all_users_admin.format(count=count, user_username=user.username))
                 count +=1
             else:
-                await msg.answer(f"{count} {user.username}")
+                await msg.answer(text.all_users.format(count=count, user_username=user.username))
                 count += 1
     else:
         await msg.answer("У вас нет прав!")
