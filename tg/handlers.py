@@ -31,19 +31,13 @@ async def start_handler(msg: Message, state: FSMContext):
         await state.set_state(Chat.operator)
         print("ADMIN PANEL")
         order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
-    if created:
+    if user:
         user.first_name = msg.from_user.first_name
         user.last_name = msg.from_user.last_name
         user.username = msg.from_user.username
         user.save()
-        print("NEW USER ADDED")
-        print(user.first_name, user.username)
-
-    if not created:
-        user.first_name = msg.from_user.first_name
-        user.last_name = msg.from_user.last_name
-        user.username = msg.from_user.username
-        user.save()
+        print("user in /start")
+        print(user.first_name, user.last_name, user.username)
 
     await msg.answer(text.greet_operator.format(name=msg.from_user.full_name) if user.is_admin
                      else text.greet.format(name=msg.from_user.full_name), reply_markup=kb.operator_i if user.is_admin
