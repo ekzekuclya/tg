@@ -65,6 +65,9 @@ class Chat(StatesGroup):
     operator = State()
 
 
+class OperatorAdd(StatesGroup):
+    awaiting_user_id = State()
+
 @router.callback_query()
 async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
     if callback_query.data in ["buy_ltc", "buy_btc"]:
@@ -282,3 +285,23 @@ async def send_users(msg: Message):
                 count += 1
     else:
         await msg.answer("У вас нет прав!")
+
+
+@router.message(Command("permission"))
+async def add_permission(msg: Message, state: FSMContext):
+    user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
+        user_id=msg.from_user.id,
+    )
+    await state.set_state(OperatorAdd.awaiting_user_id)
+
+@router.message(OperatorAdd.awaiting_user_id)
+async def awaiting_user_id(msg: Message, state: FSMContext):
+    try:
+        user_id = msg.text
+        user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=user_id)
+        user.is_admin = True
+        user.save()
+        await msg.answer("Пользователь добавлен в операторы")
+        state.clear()
+    except Exception:
+        await msg.answer("Произошла ошибка")
