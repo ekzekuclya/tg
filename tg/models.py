@@ -22,6 +22,8 @@ class Chat(models.Model):
 
 
 class Exchange(models.Model):
+    user = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
+    operator = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="operator")
     amount = models.DecimalField(max_digits=10, decimal_places=4, null=True)
     crypto = models.CharField(max_length=25, null=True)
     kgs_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True)
@@ -35,6 +37,7 @@ class Exchange(models.Model):
 
 class CurrentUsdtCourse(models.Model):
     usdt = models.FloatField()
+    coms = models.IntegerField()
 
 
 class TGMessage(models.Model):

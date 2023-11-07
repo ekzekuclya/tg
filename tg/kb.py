@@ -11,18 +11,25 @@ operator_menu = [
 ]
 
 buy_ltc = [
-    [InlineKeyboardButton(text="Купить", callback_data="confirm_purchase_ltc")],
+    [InlineKeyboardButton(text="Подтверждаю", callback_data="confirm_purchase_ltc")],
     [InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase")]
 ]
 
 buy_btc = [
-    [InlineKeyboardButton(text="Купить", callback_data="confirm_purchase_btc")],
+    [InlineKeyboardButton(text="Подтверждаю", callback_data="confirm_purchase_btc")],
     [InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase")]
 ]
 
 order = [
-    [InlineKeyboardButton(text="Взять", callback_data="take_order")]
+    [InlineKeyboardButton(text="Взять", callback_data="take_order")],
 ]
+
+bought_ltc = [
+    [InlineKeyboardButton(text="Оплатил", callback_data="payed")],
+    [InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase")]
+
+]
+bought_ltc = InlineKeyboardMarkup(inline_keyboard=bought_ltc)
 
 order = InlineKeyboardMarkup(inline_keyboard=order)
 buy_btc = InlineKeyboardMarkup(inline_keyboard=buy_btc)

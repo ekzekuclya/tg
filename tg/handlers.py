@@ -65,11 +65,8 @@ class Chat(StatesGroup):
     operator = State()
 
 
-
-
 @router.callback_query()
 async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
-
     if callback_query.data in ["buy_ltc", "buy_btc"]:
         user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
@@ -83,18 +80,23 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         await state.set_state(BuyCryptoStates.awaiting_crypto_amount)
 
     if callback_query.data in ["confirm_purchase_ltc", "confirm_purchase_btc"]:
+
         operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True)
         user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
-
+        rate = await sync_to_async(CurrentUsdtCourse.objects.first)()
         for operator in operators:
             await bot.send_message(operator.user_id, text.exchange_text.format(exchange_amount=exchange.amount,
                                                                                exchange_crypto=exchange.crypto,
-                                                                               exchange_kgs_amount=exchange.kgs_amount,
+                                                                               exchange_kgs_amount=exchange.kgs_amount +
+                                                                               rate.coms,
                                                                                exchange_exchange_rate=
                                                                                exchange.exchange_rate,
                                                                                exchange_created_at=exchange.created_at),
                                    reply_markup=kb.order)
+        await callback_query.message.delete()
+        await callback_query.message.answer(text=f"Колличество: {exchange.amount}\nВалюта: {exchange.crypto}\nОплата: {exchange.kgs_amount} + комиссия {rate.coms}\nОбщая оплата: {exchange.kgs_amount + rate.coms}\n\nСНИЩУ БУДУТ РЕКВИЗИТЫ",
+                                            reply_markup=kb.bought_ltc)
 
         await state.set_state(Chat.user)
 
