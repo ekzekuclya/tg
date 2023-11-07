@@ -1,24 +1,29 @@
+import random
+
 from aiogram import Dispatcher, types, Router, Bot, F
 from aiogram.filters import Command
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from asgiref.sync import sync_to_async
 from aiogram.enums.parse_mode import ParseMode
 from aiogram.filters import BaseFilter
-
+from aiogram.utils import markdown as md
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError
 
 from . import config, kb, text, chat
-from .models import TelegramUser, Order
+from .models import TelegramUser, Chat as Order, Exchange, CurrentUsdtCourse, TGMessage
 from .utils import get_ltc_price, get_crypto_price
 
 
 router = Router()
 
 
+@router.message(F.text == "◀️ Выйти в меню")
 @router.message(Command("start"))
-async def start_handler(msg: Message):
+async def start_handler(msg: Message, state: FSMContext):
     user_id = msg.from_user.id
     first_name = msg.from_user.first_name
     last_name = msg.from_user.last_name
@@ -30,10 +35,17 @@ async def start_handler(msg: Message):
         last_name=last_name,
         username=username
     )
+    if user.is_admin:
+        await state.set_state(Chat.operator)
     if created:
         print("NEW USER ADDED")
         print(user.first_name, user.username)
-    await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=kb.menu)
+    # if user.is_admin:
+    #     await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=)
+    await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=kb.menu,
+                     parse_mode=ParseMode.MARKDOWN)
+    await state.clear()
+
 
 
 class BuyCryptoStates(StatesGroup):
@@ -52,113 +64,160 @@ class Chat(StatesGroup):
     user = State()
     operator = State()
 
-# @router.message(Command("start"))
+
 
 
 @router.callback_query()
 async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
+
     if callback_query.data in ["buy_ltc", "buy_btc"]:
-        await callback_query.message.delete()
+        user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=callback_query.from_user.id)
+        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
         await callback_query.message.answer(f"Сколько хотите купить?\nНапример: 0.260851", reply_markup=kb.iexit_kb)
-        crypto_symbol = callback_query.data[4:]
-        await state.update_data(crypto_symbol=crypto_symbol)
+        crypto_symbol = callback_query.data[-3:]
+        exchange.crypto = crypto_symbol
+        print(crypto_symbol)
+
+        exchange.save()
+        print(exchange.crypto)
         await state.set_state(BuyCryptoStates.awaiting_crypto_amount)
 
-    if callback_query.data == "confirm_purchase_ltc":
-        await callback_query.message.answer(f"Отправьте на счёт YOURADMIN OPTIMA: 43255346346345\n"
-                                            f"Время ожидания 30 МИНУТ")
-        await state.set_state(OrderToOperator.awaiting_kvitto)
+    if callback_query.data in ["confirm_purchase_ltc", "confirm_purchase_btc"]:
+        operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True)
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
+
+        for operator in operators:
+            await bot.send_message(operator.user_id, text.exchange_text.format(exchange_amount=exchange.amount,
+                                                                               exchange_crypto=exchange.crypto,
+                                                                               exchange_kgs_amount=exchange.kgs_amount,
+                                                                               exchange_exchange_rate=
+                                                                               exchange.exchange_rate,
+                                                                               exchange_created_at=exchange.created_at),
+                                   reply_markup=kb.order)
+
+        await state.set_state(Chat.user)
+
     if callback_query.data == "cancel_purchase":
         await callback_query.message.answer("Меню", reply_markup=kb.menu)
     if callback_query.data == "menu":
         await callback_query.message.edit_text(text.greet.format(name=callback_query.from_user.full_name), reply_markup=kb.menu)
     if callback_query.data == "operator":
+
         await state.set_state(Chat.user)
-        user, created = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=callback_query.from_user.id)
-        order, _ = await sync_to_async(Order.objects.get_or_create)(user=user, is_active=True)
-        operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True, is_active=True)
+        user_info = {
+            "user_id": callback_query.from_user.id,
+        }
+        await state.set_data(user_info)
+        orders = await sync_to_async(Order.objects.filter)(is_active=True)
+
+        for order in orders:
+            take_order_callback_data = f"take_order_{callback_query.from_user.id}"
+            order_i = [[InlineKeyboardButton(text="Взять", callback_data=take_order_callback_data)]]
+            order_kb = InlineKeyboardMarkup(inline_keyboard=order_i)
+            await bot.send_message(order.operator.user_id, f"Пользователь {callback_query.from_user.full_name} пишет",
+                                   reply_markup=order_kb)
 
         await callback_query.message.answer("Вы связались с оператором. Начните писать вопросы или сообщения.",
-                                            reply_markup=kb.exit_kb)
-        for operator in operators:
-            await bot.send_message(operator.user_id, f"Клиент {callback_query.from_user.username} пишет!\n"
-                                                     f"Примите запрос, прежде чем ответить!",
-                                   reply_markup=kb.order)
+                                            reply_markup=kb.exit_kb, one_time_keyboard=False)
 
-    if callback_query.data == "take_order":
-        orders = await sync_to_async(Order.objects.filter)(is_active=True, operator=None)
-        order = orders.first()
+    if callback_query.data.startswith("take_order_"):
         operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
-        if order is None:
+        order, _ = await sync_to_async(Order.objects.get_or_create)(is_active=True, operator=operator)
+        user_id = int(callback_query.data.split("_")[2])
+        print("CALLBACK USER", user_id)
+
+        if user_id is None:
             await callback_query.message.answer("Ордер уже забрали")
             await state.clear()
         else:
-            order.operator = operator
+            user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
+            order.user.add(user)
             order.save()
-            operator.is_active = False
-            operator.save()
             await state.set_state(Chat.operator)
             await callback_query.message.edit_text("Вы забрали ордер, можете начать писать!")
 
 
 @router.message(Chat.user)
 async def user_chat(msg: Message, state: FSMContext, bot: Bot):
-    user, created = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=msg.from_user.id)
-    order, _ = await sync_to_async(Order.objects.get_or_create)(user=user, is_active=True)
-    operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True, is_active=True)
-    print("USER CHAT: ORDER.OPERATOR", order.operator)
-    if order.operator is None:
+    user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=msg.from_user.id)
+
+    order = await sync_to_async(Order.objects.filter(user=user, is_active=True).first)()
+
+    try:
+        tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id,
+                                                                         sender=user, text=msg.text)
+    except IntegrityError:
+        print("UNIQ FALSE")
+    if order is None:
+        operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True)
         print("ВНУТРИ ИС НАН")
         for operator in operators:
             print("ВНУТРИ ЦИКЛА ОПЕРАТОРС")
             await msg.forward(operator.user_id)
 
     if msg.text == "EXIT":
-        order.is_active = False
-        order.operator.is_active = True
-        order.operator.save()
+        order.user.delete(user)
+        # order.save(update_fields=[order.user])
         order.save()
         await msg.answer("Вы вышли из чата")
         await bot.send_message(order.operator.user_id, "Пользователь вышел из чата")
         await state.clear()
 
-    if order.operator:
+    if order is not None:
+        tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id,
+                                                                                   sender=user, text=msg.text)
+
+        tg_message.order = order
+        tg_message.save()
         await msg.forward(order.operator.user_id)
 
 
 @router.message(Chat.operator)
 async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
-
     operator = await sync_to_async(TelegramUser.objects.get)(user_id=message.from_user.id)
-    orders = await sync_to_async(Order.objects.filter)(operator=operator, is_active=True)
-    order = orders.first()
-    if order is None:
-        await state.clear()
-        operator.is_active = True
-        operator.save()
-    if message.text == "EXIT":
-        await state.clear()
-        operator.is_active = True
-        order.is_active = False
-        operator.save()
+    order = await sync_to_async(Order.objects.get)(operator=operator, is_active=True)
+    replied_message = message.reply_to_message
+    # users = order.user.all()
+    # keyboard = []
+    #
+    # for user in users:
+    #     keyboard.append([KeyboardButton(text=f"{user.username}")])
+    #     markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    if order.user.count() == 1:
+        user = order.user.first()
+        await bot.send_message(user.user_id, message.text)
+
+    if replied_message is not None:
+        print(replied_message.message_id)
+        tg_message = await sync_to_async(TGMessage.objects.get)(message_id=replied_message.message_id-1)
+        print(tg_message.text)
+        order.user.add(tg_message.sender)
         order.save()
-    if order.is_active:
-        await bot.send_message(order.user.user_id, message.text, reply_markup=kb.exit_kb)
+        await bot.send_message(tg_message.sender.user_id, message.text)
 
 
 @router.message(BuyCryptoStates.awaiting_crypto_amount)
 async def process_crypto_amount(msg: Message, state: FSMContext):
-        try:
-            data = await state.get_data()
-            crypto_symbol = data.get("crypto_symbol")
-            crypto_amount = float(msg.text)
-            crypto_price = await get_crypto_price(crypto_symbol)
-            total_cost = crypto_amount * crypto_price
-            await msg.answer(
-                f"{crypto_amount} {crypto_symbol.upper()} будет стоить {total_cost} KGS. Желаете подтвердить покупку?",
-                reply_markup=kb.buy_btc if crypto_symbol == "btc" else kb.buy_ltc)
-        except ValueError:
-            await msg.answer("Пожалуйста, введите корректное количество криптовалюты (число).")
+    try:
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
+        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
+        usdt = await sync_to_async(CurrentUsdtCourse.objects.first)()
+        crypto_amount = float(msg.text)
+        print(exchange.crypto)
+        crypto_price = await get_crypto_price(str(exchange.crypto), usdt.usdt)
+        total_cost = crypto_amount * crypto_price
+        exchange.amount = crypto_amount
+        exchange.kgs_amount = total_cost
+        exchange.exchange_rate = crypto_price
+        exchange.save()
+        await msg.answer(
+            f"{crypto_amount} {exchange.crypto.upper()} будет стоить {total_cost} KGS. Желаете подтвердить покупку?",
+            reply_markup=kb.buy_btc if exchange.crypto == "btc" else kb.buy_ltc)
+        await state.clear()
+
+    except ValueError:
+        await msg.answer("Пожалуйста, введите корректное количество криптовалюты (число).")
 
 
 @router.message(Command("send"))

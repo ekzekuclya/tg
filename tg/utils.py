@@ -17,13 +17,7 @@ def get_ltc_price():
     return ltc_to_kgs
 
 
-async def get_crypto_price(crypto_symbol):
-    url = "https://openexchangerates.org/api/latest.json?app_id=84c6243309e84299a2b028f8c55d21d8"
-    response = requests.get(url)
-    data = response.json()
-
-    usd_to_kgs = data['rates']['KGS']
-
+async def get_crypto_price(crypto_symbol, usdt):
     if crypto_symbol == "ltc":
         crypto_key = "litecoin"
     elif crypto_symbol == "btc":
@@ -36,5 +30,5 @@ async def get_crypto_price(crypto_symbol):
     data = response.json()
 
     crypto_to_usd = data[crypto_key]['usd']
-    crypto_to_kgs = crypto_to_usd * usd_to_kgs
+    crypto_to_kgs = crypto_to_usd * usdt
     return crypto_to_kgs
