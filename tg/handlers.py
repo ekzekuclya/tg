@@ -24,8 +24,6 @@ router = Router()
 @router.message(Command("start"))
 async def start_handler(msg: Message, state: FSMContext):
     user_id = msg.from_user.id
-
-
     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
         user_id=user_id,
     )
@@ -34,6 +32,10 @@ async def start_handler(msg: Message, state: FSMContext):
         print("ADMIN PANEL")
         order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
     if created:
+        user.first_name = msg.from_user.first_name
+        user.last_name = msg.from_user.last_name
+        user.username = msg.from_user.username
+        user.save()
         print("NEW USER ADDED")
         print(user.first_name, user.username)
 
@@ -43,12 +45,11 @@ async def start_handler(msg: Message, state: FSMContext):
         user.username = msg.from_user.username
         user.save()
 
-    # if user.is_admin:
-    #     await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=)
-    await msg.answer(text.greet.format(name=msg.from_user.full_name), reply_markup=kb.menu,
+    await msg.answer(text.greet_operator.format(name=msg.from_user.full_name) if user.is_admin
+                     else text.greet.format(name=msg.from_user.full_name), reply_markup=kb.operator_i if user.is_admin
+                     else kb.menu,
                      parse_mode=ParseMode.MARKDOWN)
     await state.clear()
-
 
 
 class BuyCryptoStates(StatesGroup):
@@ -71,6 +72,7 @@ class Chat(StatesGroup):
 
 class OperatorAdd(StatesGroup):
     awaiting_user_id = State()
+
 
 @router.callback_query()
 async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
@@ -138,9 +140,8 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
 
         user_id = int(callback_query.data.split("_")[2])
         user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
-        print("CALLBACK USER", user_id)
         is_user_in_chat = await return_bool(user)
-        print(is_user_in_chat)
+
         if user_id is None:
             await callback_query.message.answer("Ордер уже забрали")
             await state.clear()
@@ -159,6 +160,8 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
     user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=msg.from_user.id)
 
     order = await sync_to_async(Order.objects.filter(user=user, is_active=True).first)()
+    tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id,
+                                                                               sender=user, text=msg.text)
 
     try:
         tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id,
@@ -167,11 +170,8 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
         print("UNIQ FALSE")
     if order is None:
         operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True)
-        print("ВНУТРИ ИС НАН")
         for operator in operators:
-            print("ВНУТРИ ЦИКЛА ОПЕРАТОРС")
             await msg.forward(operator.user_id)
-
 
     if msg.text == "EXIT":
         order.user.remove(user)

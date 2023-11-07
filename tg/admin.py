@@ -19,6 +19,11 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = ['is_active']
 
 
+@admin.register(CurrentUsdtCourse)
+class CurrentUsdtCourseAdmin(admin.ModelAdmin):
+    list_display = ['usdt', 'coms']
+
+
 @admin.register(Exchange)
 class ExchangeAdmin(admin.ModelAdmin):
     list_display = ['crypto']
