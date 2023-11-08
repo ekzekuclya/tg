@@ -1,6 +1,10 @@
 from django.contrib import admin
-from .models import TelegramUser, Chat, Exchange, CurrentUsdtCourse, TGMessage
+from .models import TelegramUser, Chat, Exchange, CurrentUsdtCourse, TGMessage, Payment
 
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ['operator']
 
 @admin.register(TGMessage)
 class TGMessageAdmin(admin.ModelAdmin):

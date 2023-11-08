@@ -27,3 +27,12 @@ exchange_data = (""
 
 all_users_admin = "{count} {user_username} ------ HAS ADMIN PERMISSIONS"
 all_users = "{count} {user_username}"
+
+
+order_data = ("Колличество: {amount}\n"
+              "Валюта: {crypto}\n"
+              "Оплата: {kgs_amount} + комиссия {coms}\n"
+              "Общая оплата: {full}"
+              "\n\nРеквизиты для оплаты:\n"
+              "mBank - {mbank}\n"
+              "Optima - {optima}")

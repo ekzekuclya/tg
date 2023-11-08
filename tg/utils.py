@@ -1,6 +1,10 @@
 import requests
+from aiogram.types import PhotoSize
 from asgiref.sync import sync_to_async
-from .models import Chat
+from .models import Chat, TelegramUser
+from datetime import datetime, timedelta
+
+from pytz import timezone  # Импортируйте pytz
 
 
 def get_ltc_price():
@@ -46,6 +50,31 @@ async def return_bool(user):
     return user_found
 
 
+async def check_inactive_users():
+    print("IM IN INACTIVE USERS")
+    utc = timezone('UTC')
+    now = utc.localize(datetime.now())
+    cutoff_time = timedelta(minutes=5)
+
+    users = await sync_to_async(TelegramUser.objects.filter)()
+    chats = await sync_to_async(Chat.objects.filter)(is_active=True)
+
+    for chat in chats:
+        for user in chat.user.all():
+            if user.last_activity:
+                time_inactive = now - user.last_activity
+                if time_inactive > cutoff_time:
+                    chat.user.remove(user)
+            else:
+                chat.user.remove(user)
+
+
+photo = [PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADcwADMwQ',
+                   file_unique_id='AQAD9dExG6RiWEp4', width=90, height=90, file_size=1482),
+         PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADbQADMwQ',
+                   file_unique_id='AQAD9dExG6RiWEpy', width=320, height=320, file_size=24028),
+         PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADeAADMwQ',
+                   file_unique_id='AQAD9dExG6RiWEp9', width=736, height=736, file_size=86045)]
 
 
 

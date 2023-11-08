@@ -9,9 +9,13 @@ class TelegramUser(models.Model):
     date_joined = models.DateTimeField(auto_now_add=True)
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    last_activity = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.username
+
+    class Meta:
+        ordering = ['-last_activity']
 
 
 class Chat(models.Model):
@@ -30,9 +34,8 @@ class Exchange(models.Model):
     exchange_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     confirmed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    # def __str__(self):
-    #     return f"{self.user.username} - LTC to KGS Exchange"
+    user_photo = models.CharField(max_length=2555, null=True, blank=True)
+    operator_photo = models.CharField(max_length=2555, null=True, blank=True)
 
 
 class CurrentUsdtCourse(models.Model):
@@ -43,6 +46,15 @@ class CurrentUsdtCourse(models.Model):
 class TGMessage(models.Model):
     order = models.ForeignKey(Chat, on_delete=models.SET_NULL, related_name="messages", null=True, blank=True)
     message_id = models.IntegerField(unique=True)
-    sender = models.ForeignKey(TelegramUser, on_delete=models.CASCADE)
+    sender = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Payment(models.Model):
+    operator = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
+    mbank = models.CharField(max_length=255, null=True, blank=True)
+    optima = models.CharField(max_length=255, null=True, blank=True)
+
+
+

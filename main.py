@@ -6,6 +6,14 @@ django.setup()
 
 import asyncio
 import logging
+from tg.utils import check_inactive_users
+
+
+async def periodic_check_inactive_users():
+    while True:
+        await check_inactive_users()
+        await asyncio.sleep(300)
+        print("STARTED PERIODIC CHECK")
 
 
 async def main():
@@ -18,6 +26,7 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(periodic_check_inactive_users())
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
