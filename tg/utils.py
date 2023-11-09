@@ -46,15 +46,15 @@ async def return_bool(user):
     for chat in chats:
         if user in chat.user.all():
             user_found = True
-            break
-    return user_found
+            return user_found, chat.operator
+    return user_found, None
 
 
 async def check_inactive_users():
     print("IM IN INACTIVE USERS")
     utc = timezone('UTC')
     now = utc.localize(datetime.now())
-    cutoff_time = timedelta(minutes=5)
+    cutoff_time = timedelta(minutes=10)
 
     users = await sync_to_async(TelegramUser.objects.filter)()
     chats = await sync_to_async(Chat.objects.filter)(is_active=True)

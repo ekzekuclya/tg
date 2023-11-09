@@ -15,8 +15,7 @@ from .models import TelegramUser, Chat as Order, Exchange, CurrentUsdtCourse, TG
 from .utils import get_crypto_price, return_bool
 import asyncio
 router = Router()
-
-
+from django.utils import timezone
 
 
 @router.message(F.text == "◀️ Выйти в меню")
@@ -143,23 +142,29 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
 
         user_id = int(callback_query.data.split("_")[2])
         user = await sync_to_async(TelegramUser.objects.get)(user_id=user_id)
-        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user)
-
+        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
+        user_in_chat, chat_operator = await return_bool(user)
         if exchange.operator == operator:
             order.user.add(user)
             order.save()
             await state.set_state(Chat.operator)
             await callback_query.message.answer("✔ Вы забрали ордер, можете начать писать!", reply_markup=kb.send_order,
                                                 one_time_keyboard=False)
-        else:
-            await callback_query.message.answer("Забрали")
+        if not user_in_chat:
+            order.user.add(user)
+            order.save()
+            await state.set_state(Chat.operator)
+            await callback_query.message.answer("✔ Вы забрали ордер, можете начать писать!", reply_markup=kb.send_order,
+                                                one_time_keyboard=False)
+        if user_in_chat:
+            await callback_query.message.answer(f"Ордер забрал оператор {chat_operator.username}")
     if callback_query.data == "payed":
         user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
         await state.set_state(UserPayed.awaiting_photo)
         await callback_query.message.answer("Пожалуйста отправьте фото чека")
         await callback_query.message.forward(exchange.operator.user_id)
-        await bot.send_message(exchange.operator.user_id, "Подтвердите получение денег")
+        await bot.send_message(exchange.operator.user_id, f"Пользователь {user.username} нажал что оплатил")
 
     if callback_query.data in ["change_usdt", "change_coms", "change_card"]:
         data = callback_query.data[-4:]
@@ -192,6 +197,10 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
     exchange, created = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
     tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id, sender=user)
     photo = msg.photo
+    user.last_activity = timezone.now()
+    user.save()
+    orders = await sync_to_async(Order.objects.filter)(is_active=True)
+    user_in_chat, chat_operator = await return_bool(user)
     if exchange.operator:
         order = await sync_to_async(Order.objects.get)(operator=exchange.operator, is_active=True)
         order.user.add(user)
@@ -201,14 +210,12 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
         await msg.forward(exchange.operator.user_id, photo=photo if photo else None)
         print("IF USER IN CHAT")
 
-    user.last_activity = datetime.now()
-    user.save()
-    orders = await sync_to_async(Order.objects.filter)(is_active=True)
-    user_in_chat = await return_bool(user)
-
-    if not user_in_chat:
-        for i in orders:
-            await msg.forward(i.operator.user_id)
+    else:
+        if user_in_chat:
+            await msg.forward(chat_operator.user_id)
+        elif not user_in_chat:
+            for i in orders:
+                await msg.forward(i.operator.user_id)
 
 
 @router.message(Chat.operator)
@@ -223,15 +230,21 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
         users = users.order_by('-last_activity')
         newest_user = users.first()
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=newest_user, confirmed=False)
-        rate = await sync_to_async(CurrentUsdtCourse.objects.first)()
-        payment = await sync_to_async(Payment.objects.get)(operator=operator)
-        await bot.send_message(chat_id=newest_user.user_id,text=text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
-                             kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount + rate.coms,
-                             mbank=payment.mbank, optima=payment.optima),
-                             reply_markup=kb.bought_ltc_operator)
-        await message.answer(text="ВЫ ОТПРАВИЛИ ЕМУ ОРДЕР:\n" + text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
-                             kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount + rate.coms,
-                             mbank=payment.mbank, optima=payment.optima))
+        exchange.operator = operator
+        exchange.save()
+        try:
+            rate = await sync_to_async(CurrentUsdtCourse.objects.first)()
+            payment = await sync_to_async(Payment.objects.get)(operator=operator)
+
+            await bot.send_message(chat_id=newest_user.user_id,text=text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
+                                 kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount + rate.coms,
+                                 mbank=payment.mbank, optima=payment.optima),
+                                 reply_markup=kb.bought_ltc_operator)
+            await message.answer(text="ВЫ ОТПРАВИЛИ ЕМУ ОРДЕР:\n" + text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
+                                 kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount + rate.coms,
+                                 mbank=payment.mbank, optima=payment.optima))
+        except Exception:
+            await bot.send_message(newest_user.user_id, "Пожалуйста выберите что хотите купить", reply_markup=kb.menu)
 
     elif order.user.count() == 1:
         user = order.user.first()
@@ -410,9 +423,13 @@ async def awaiting_card(msg: Message, state: FSMContext):
         await msg.answer("Введите верный формат, введите числа!")
 
 
-# @router.message(UserPayed.awaiting_photo)
-# async def awaiting_payed_photo(msg: Message, state: FSMContext):
-#     photo = msg.photo
-#
-#     if photo:
+@router.message(UserPayed.awaiting_photo)
+async def awaiting_payed_photo(msg: Message, state: FSMContext, bot: Bot):
+    photo = msg.photo
+    user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
+    exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user)
+    if photo:
+        exchange.user_photo = photo[0].file_id
+        await msg.forward(exchange.operator.user_id)
+        await bot.send_message(exchange.operator.user_id, "Подтвердите получение средств")
 
