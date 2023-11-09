@@ -169,7 +169,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
     if callback_query.data in ["change_usdt", "change_coms", "change_card"]:
         data = callback_query.data[-4:]
         operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
-        payment = await sync_to_async(Payment.objects.get_or_create)(operator=operator)
+        payment, _ = await sync_to_async(Payment.objects.get_or_create)(operator=operator)
         await state.clear()
 
         if data == "usdt":
