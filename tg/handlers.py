@@ -173,7 +173,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         await state.clear()
 
         if data == "usdt":
-            await callback_query.message.answer(f"Нынешний курс USDT - 💲{payment.usdt}\nВведите желаемые курс")
+            await callback_query.message.answer(f"Нынешний курс Ваш USDT - 💲{payment.usdt}\nВведите желаемые курс")
             await state.set_state(SendStateOperator.awaiting_usdt)
         elif data == "coms":
             await callback_query.message.answer(f"Стоимость комиссии - 💵{payment.coms} сом\nВведите желаемые курс")
