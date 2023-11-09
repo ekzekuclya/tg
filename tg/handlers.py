@@ -169,16 +169,14 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
     if callback_query.data in ["change_usdt", "change_coms", "change_card"]:
         data = callback_query.data[-4:]
         operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
-
-        course = await sync_to_async(Payment.objects.get)(operator=operator)
-
+        payment = await sync_to_async(Payment.objects.get_or_create)(operator=operator)
         await state.clear()
 
         if data == "usdt":
-            await callback_query.message.answer(f"Нынешний курс USDT - 💲{course.usdt}\nВведите желаемые курс")
+            await callback_query.message.answer(f"Нынешний курс USDT - 💲{payment.usdt}\nВведите желаемые курс")
             await state.set_state(SendStateOperator.awaiting_usdt)
         elif data == "coms":
-            await callback_query.message.answer(f"Стоимость комиссии - 💵{course.coms} сом\nВведите желаемые курс")
+            await callback_query.message.answer(f"Стоимость комиссии - 💵{payment.coms} сом\nВведите желаемые курс")
             await state.set_state(SendStateOperator.awaiting_coms)
         elif data == "card":
             await callback_query.message.answer(f"Как реквизит хочешь изменить?", reply_markup=kb.card)
