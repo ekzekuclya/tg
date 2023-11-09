@@ -222,7 +222,7 @@ async def get_payments(message: Message):
         exchange.kgs_amount = total_cost
         exchange.exchange_rate = crypto_price
         exchange.save()
-        response_text = f"Выберите реквизиты (страница {page} из {total_pages}):\n\n"
+        response_text = f""
         response_text += text.order_data.format(amount=crypto_amount, crypto=exchange.crypto,
                                                 kgs_amount=exchange.kgs_amount, coms=payment.coms,
                                                 full=exchange.kgs_amount + payment.coms, mbank=payment.mbank,
@@ -232,7 +232,7 @@ async def get_payments(message: Message):
                                                                            f"{payment.id}"),
                     InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
         await message.answer(text=response_text, reply_markup=builder.as_markup())
-    if page <= total_pages:
+    if page < total_pages:
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
         payment = payments[start_index:end_index]
@@ -261,8 +261,7 @@ async def get_payments(message: Message):
             builder.add(InlineKeyboardButton(text="Следующая", callback_data=f"next_page_{page}"))
         builder.adjust(1, 2, 1)
         await message.answer(text=response_text, reply_markup=builder.as_markup())
-    else:
-        await message.answer("Страницы с отзывами не существует.")
+
 
 
 async def get_reviews_page(message, page, user):
