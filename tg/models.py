@@ -55,8 +55,8 @@ class Payment(models.Model):
     operator = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
     mbank = models.CharField(max_length=255, null=True, blank=True)
     optima = models.CharField(max_length=255, null=True, blank=True)
-    usdt = models.FloatField()
-    coms = models.IntegerField()
+    usdt = models.FloatField(null=True, blank=True)
+    coms = models.IntegerField(null=True, blank=True)
 
 
 
