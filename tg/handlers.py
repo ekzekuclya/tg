@@ -1,6 +1,8 @@
 import random
 from datetime import datetime, timedelta
 
+from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+
 from .states import BuyCryptoStates, SendState, OperatorAdd, Chat, SendStateOperator, PaymentState, UserPayed
 from aiogram import types, Router, Bot, F
 from aiogram.filters import Command
@@ -49,29 +51,27 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
     if callback_query.data in ["buy_ltc", "buy_btc"]:
         user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
-        await callback_query.message.answer(f"Сколько хотите купить?\nНапример: 0.260851", reply_markup=kb.iexit_kb)
         crypto_symbol = callback_query.data[-3:]
         exchange.crypto = crypto_symbol
         exchange.save()
+        await callback_query.message.answer(f"Сколько хотите купить?\nНапример: 0.260851", reply_markup=kb.iexit_kb,
+                                            input_field_placeholder=f"Введите кол-во {crypto_symbol}")
         await state.set_state(BuyCryptoStates.awaiting_crypto_amount)
 
-    if callback_query.data in ["confirm_purchase_ltc", "confirm_purchase_btc"]:
-
-        operators = await sync_to_async(TelegramUser.objects.filter)(is_admin=True)
+    if callback_query.data.startswith("confirm_purchase_"):  #in ["confirm_purchase_ltc", "confirm_purchase_btc"]:
+        crypto_symbol = callback_query.data[17:20]
+        payment_id = callback_query.data[20:]
+        payment = await sync_to_async(Payment.objects.get)(id=payment_id)
         user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
-        exchange.operator = None
-        exchange.save()
-        rate = await sync_to_async(CurrentUsdtCourse.objects.first)()
-        # payment = await sync_to_async(Payment.objects.first)()
-        payments = await sync_to_async(Payment.objects.all)()
-        payment = random.choice(payments)
+
         exchange.operator = payment.operator
         exchange.save()
+
         await callback_query.message.delete()
         await callback_query.message.answer(text=text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
-                                            kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount +
-                                            rate.coms, mbank=payment.mbank, optima=payment.optima),
+                                            kgs_amount=exchange.kgs_amount, coms=payment.coms, full=exchange.kgs_amount +
+                                            payment.coms, mbank=payment.mbank, optima=payment.optima),
                                             reply_markup=kb.bought_ltc)
 
     if callback_query.data == "order_operator":
@@ -168,7 +168,10 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
 
     if callback_query.data in ["change_usdt", "change_coms", "change_card"]:
         data = callback_query.data[-4:]
-        course = await sync_to_async(CurrentUsdtCourse.objects.first)()
+        operator = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+
+        course = await sync_to_async(Payment.objects.get)(operator=operator)
+
         await state.clear()
 
         if data == "usdt":
@@ -189,6 +192,117 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         elif data == "change_mbank":
             await callback_query.message.answer("💴 Введите новый реквизит для mBank")
             await state.set_state(PaymentState.awaiting_mbank)
+
+    if callback_query.data.startswith("next_page_"):
+        page = int(callback_query.data.split("_")[2])
+        print("NEXT PAGE", page + 1)
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        await get_reviews_page(callback_query.message, page + 1, user)
+    if callback_query.data.startswith("prev_page_"):
+        page = int(callback_query.data.split("_")[2])
+        print("PREV PAGE", page - 1)
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        await get_reviews_page(callback_query.message, page - 1, user)
+
+
+@router.message(BuyCryptoStates.awaiting_crypto_amount)
+async def get_payments(message: Message):
+    page = 1  # Начальная страница
+    page_size = 1  # Количество отзывов на странице
+
+    user = await sync_to_async(TelegramUser.objects.get)(user_id=message.from_user.id)
+    exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
+    payments = await sync_to_async(Payment.objects.all)()
+    payment = payments.first()
+    total_pages = (len(payments) + page_size - 1) // page_size          # Кол-во страниц
+    if payments.count() == 1:
+        crypto_amount = float(message.text)
+        crypto_price = await get_crypto_price(str(exchange.crypto), payment.usdt)
+        total_cost = crypto_amount * crypto_price
+        print("SHOWING PAYMENT", payment.operator.username, payment.coms, payment.usdt)
+        exchange.amount = crypto_amount
+        exchange.kgs_amount = total_cost
+        exchange.exchange_rate = crypto_price
+        exchange.save()
+        response_text = f"Выберите реквизиты (страница {page} из {total_pages}):\n\n"
+        response_text += text.order_data.format(amount=crypto_amount, crypto=exchange.crypto,
+                                                kgs_amount=exchange.kgs_amount, coms=payment.coms,
+                                                full=exchange.kgs_amount + payment.coms, mbank=payment.mbank,
+                                                optima=payment.optima)
+        builder = InlineKeyboardBuilder()
+        builder.add(InlineKeyboardButton(text="Подтверждаю", callback_data=f"confirm_purchase_{exchange.crypto}"
+                                                                           f"{payment.id}"),
+                    InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
+        await message.answer(text=response_text, reply_markup=builder.as_markup())
+    if page <= total_pages:
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        payment = payments[start_index:end_index]
+        payment = payment[0]
+        print("СКОЛЬКО ШТУК", payment)
+        crypto_amount = float(message.text)
+        crypto_price = await get_crypto_price(str(exchange.crypto), payment.usdt)
+        total_cost = crypto_amount * crypto_price
+        print("SHOWING PAYMENT", payment.operator.username, payment.coms, payment.usdt)
+        exchange.amount = crypto_amount
+        exchange.kgs_amount = total_cost
+        exchange.exchange_rate = crypto_price
+        exchange.save()
+        response_text = f"Выберите реквизиты (страница {page} из {total_pages}):\n\n"
+        response_text += text.order_data.format(amount=crypto_amount, crypto=exchange.crypto,
+                                                kgs_amount=exchange.kgs_amount, coms=payment.coms,
+                                                full=exchange.kgs_amount + payment.coms, mbank=payment.mbank,
+                                                optima=payment.optima)
+        builder = InlineKeyboardBuilder()
+
+        builder.add(InlineKeyboardButton(text="Подтверждаю", callback_data=f"confirm_purchase_ltc{payment.id}"),
+                    InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
+        if page > 1:
+            builder.add(InlineKeyboardButton(text="Предыдущая", callback_data=f"prev_page_{page}"))
+        if page < total_pages:
+            builder.add(InlineKeyboardButton(text="Следующая", callback_data=f"next_page_{page}"))
+        builder.adjust(1, 2, 1)
+        await message.answer(text=response_text, reply_markup=builder.as_markup())
+    else:
+        await message.answer("Страницы с отзывами не существует.")
+
+
+async def get_reviews_page(message, page, user):
+    page_size = 1  # Количество отзывов на странице
+    exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
+    payments = await sync_to_async(Payment.objects.all)()
+
+    total_pages = (len(payments) + page_size - 1) // page_size
+
+    if page <= total_pages:
+        start_index = page - 1
+        end_index = start_index + page_size
+        payments_page = payments[start_index:end_index]
+
+        response_text = f"Отзывы (страница {page} из {total_pages}):\n\n"
+        builder = InlineKeyboardBuilder()
+        for i, payment in enumerate(payments_page, start=start_index + 1):
+            crypto_price = await get_crypto_price(str(exchange.crypto), payment.usdt)
+            total_cost = float(exchange.amount) * crypto_price
+            exchange.kgs_amount = total_cost
+            exchange.exchange_rate = crypto_price
+            exchange.save()
+            print("SHOWING PAYMENT", payment.operator.username, payment.coms, payment.usdt)
+            response_text += text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
+                                                    kgs_amount=exchange.kgs_amount, coms=payment.coms,
+                                                    full=exchange.kgs_amount + payment.coms, mbank=payment.mbank,
+                                                    optima=payment.optima)
+            builder.add(InlineKeyboardButton(text="Подтверждаю", callback_data=f"confirm_purchase_{exchange.crypto}"
+                                f"{payment.id}"), InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
+        if page > 1:
+            builder.add(InlineKeyboardButton(text="Предыдущая", callback_data=f"prev_page_{page}"))
+        if page < total_pages:
+            builder.add(InlineKeyboardButton(text="Следующая", callback_data=f"next_page_{page}"))
+        builder.adjust(1, 2, 1)
+        await message.edit_text(text=response_text, reply_markup=builder.as_markup())
+    else:
+        await message.answer("Страницы с отзывами не существует.")
+
 
 
 @router.message(Chat.user)
@@ -262,27 +376,17 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
         await bot.send_message(tg_message.sender.user_id, message.text)
 
 
-@router.message(BuyCryptoStates.awaiting_crypto_amount)
-async def process_crypto_amount(msg: Message, state: FSMContext):
-    try:
-        user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
-        exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
-        usdt = await sync_to_async(CurrentUsdtCourse.objects.first)()
-        crypto_amount = float(msg.text)
-        print(exchange.crypto)
-        crypto_price = await get_crypto_price(str(exchange.crypto), usdt.usdt)
-        total_cost = crypto_amount * crypto_price
-        exchange.amount = crypto_amount
-        exchange.kgs_amount = total_cost
-        exchange.exchange_rate = crypto_price
-        exchange.save()
-        await msg.answer(
-            f"{crypto_amount} {exchange.crypto.upper()} будет стоить {total_cost} KGS. Желаете подтвердить покупку?",
-            reply_markup=kb.buy_btc if exchange.crypto == "btc" else kb.buy_ltc)
-        await state.clear()
+# async  def get_reviews_page(msg, page, user, exchange, payments, crypto_amount, crypto_price):
+#     await msg.answer(
+#         f"{crypto_amount} {exchange.crypto.upper()} будет ADSDFSF стоить {crypto_amount * crypto_price} KGS. Желаете подтвердить покупку?",
+#         reply_markup=kb.buy_btc if exchange.crypto == "btc" else kb.buy_ltc)
 
-    except ValueError:
-        await msg.answer("Пожалуйста, введите корректное количество криптовалюты (число).")
+
+# @router.inline_query()
+# async def inline_query_handler(inline_query: types.InlineQuery):
+#     if inline_query.query.startswith("page"):
+#         page = int(inline_query.query.split("_")[2])
+#         await get_reviews_page(inline_query.)
 
 
 @router.message(Command("send"))
@@ -368,11 +472,11 @@ async def awaiting_user_id(msg: Message, state: FSMContext):
         await msg.answer("Произошла ошибка")
 
 
-@router.message(SendState.awaiting_kvitto)
-async def awaiting_kvitto(msg: Message, state: FSMContext):
-    print(msg.photo)
-    if msg.photo:
-        await msg.forward(msg.from_user.id, photo=msg.photo)
+# @router.message(SendState.awaiting_kvitto)
+# async def awaiting_kvitto(msg: Message, state: FSMContext):
+#     print(msg.photo)
+#     if msg.photo:
+#         await msg.forward(msg.from_user.id, photo=msg.photo)
 
 
 @router.message(SendStateOperator.awaiting_coms)
@@ -380,22 +484,26 @@ async def awaiting_kvitto(msg: Message, state: FSMContext):
 async def awaiting_usdt(msg: Message, state: FSMContext):
     try:
         current_state = await state.get_state()
-        course = await sync_to_async(CurrentUsdtCourse.objects.first)()
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
+        course = await sync_to_async(Payment.objects.get)(operator=user)
         if current_state == 'SendStateOperator:awaiting_usdt':
             print("IN CURRENT STATE", current_state)
-            new_usdt = float(msg.text)
+            new_usdt = msg.text
             course.usdt = new_usdt
             course.save()
+            await msg.delete()
             await msg.answer(f"Курс изменён на {new_usdt}")
             await state.clear()
         elif current_state == 'SendStateOperator:awaiting_coms':
-            new_coms = int(msg.text)
+            new_coms = msg.text
             course.coms = new_coms
             course.save()
+            await msg.delete()
             await msg.answer(f"Комиссия изменена на {new_coms}")
             await state.clear()
 
     except Exception:
+        await msg.delete()
         await msg.answer("Введите верный формат, введите число, например 91")
 
 
@@ -428,8 +536,15 @@ async def awaiting_payed_photo(msg: Message, state: FSMContext, bot: Bot):
     photo = msg.photo
     user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
     exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user)
+    payment = await sync_to_async(Payment.objects.get)(operator=exchange.operator)
+    rate = await sync_to_async(CurrentUsdtCourse.objects.first)()
     if photo:
         exchange.user_photo = photo[0].file_id
         await msg.forward(exchange.operator.user_id)
-        await bot.send_message(exchange.operator.user_id, "Подтвердите получение средств")
+        await state.set_state(Chat.user)
+        await bot.send_message(exchange.operator.user_id,text=text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
+                                            kgs_amount=exchange.kgs_amount, coms=rate.coms, full=exchange.kgs_amount +
+                                            rate.coms, mbank=payment.mbank, optima=payment.optima),
+                                            reply_markup=kb.bought_ltc)
+
 
