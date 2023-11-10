@@ -347,14 +347,16 @@ async def get_payments(message: Message, state: FSMContext, bot: Bot):
     user = await sync_to_async(TelegramUser.objects.get)(user_id=message.from_user.id)
     exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
     payments = await sync_to_async(Payment.objects.all)()
-    payment = payments.first()
+
     total_pages = (len(payments) + page_size - 1) // page_size  # Кол-во страниц
     if operator_id:
+
         exchange.operator = await sync_to_async(TelegramUser.objects.get)(user_id=operator_id)
         exchange.save()
         chat = await sync_to_async(Order.objects.get)(operator=exchange.operator)
         chat.user.add(user)
         crypto_amount = float(message.text)
+        payment = await sync_to_async(Payment.objects.get)(operator=exchange.operator)
         crypto_price = await get_crypto_price(str(exchange.crypto), payment.usdt)
         total_cost = crypto_amount * crypto_price
         print("SHOWING PAYMENT", payment.operator.username, payment.coms, payment.usdt)
