@@ -20,7 +20,6 @@ router = Router()
 from django.utils import timezone
 
 
-
 @router.message(F.text == "◀️ Выйти в меню")
 @router.message(Command("start"))
 async def start_handler(msg: Message, state: FSMContext, command: CommandObject, bot: Bot):
@@ -42,7 +41,7 @@ async def start_handler(msg: Message, state: FSMContext, command: CommandObject,
                                                           f"вашей ссылкой! \nВы просто великолепны! 💚", parse_mode=None)
         print(referred_by_id)
     if user.is_admin:
-        payment = await sync_to_async(Payment.objects.get)(operator=user)
+
         await state.set_state(Chat.operator)
         print("ADMIN PANEL")
         order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
