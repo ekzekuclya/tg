@@ -59,11 +59,12 @@ async def check_inactive_users():
     exchanges = await sync_to_async(Exchange.objects.filter)(confirmed=False)
 
     for exchange in exchanges:
-        if exchange.user.last_activity:
-            time_inactive = now - exchange.user.last_activity
-            if time_inactive > cutoff_time:
-                exchange.operator = None
-                exchange.save()
+        if exchange.user:
+            if exchange.user.last_activity:
+                time_inactive = now - exchange.user.last_activity
+                if time_inactive > cutoff_time:
+                    exchange.operator = None
+                    exchange.save()
 
     chats = await sync_to_async(Chat.objects.filter)(is_active=True)
     for chat in chats:

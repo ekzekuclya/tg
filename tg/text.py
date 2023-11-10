@@ -36,3 +36,8 @@ order_data = ("Колличество: {amount}\n"
               "\n\nРеквизиты для оплаты:\n"
               "mBank - {mbank}\n"
               "Optima - {optima}")
+
+
+order_data_short = ("Колличество: {amount}\n Валюта: {crypto}\n Оплата: {kgs_amount} + комиссия {coms}\n Общая оплата: "
+                    "{full}\n\n")
+

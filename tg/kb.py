@@ -41,6 +41,7 @@ bought_ltc_operator = InlineKeyboardMarkup(inline_keyboard=bought_ltc_operator)
 operator_i = [
     [InlineKeyboardButton(text="💲 Изменить курс USD", callback_data="change_usdt"),
      InlineKeyboardButton(text="💵 Изменить комиссию", callback_data="change_coms")],
+    [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")],
     [InlineKeyboardButton(text="💳 Изменить реквизиты", callback_data="change_card")],
     [InlineKeyboardButton(text="📝 История заказов", callback_data="order_history")]
 ]

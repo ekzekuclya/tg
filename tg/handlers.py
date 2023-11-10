@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 from .states import BuyCryptoStates, SendState, OperatorAdd, Chat, SendStateOperator, PaymentState, UserPayed
 from aiogram import types, Router, Bot, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, \
     ReplyKeyboardRemove
@@ -20,14 +20,29 @@ router = Router()
 from django.utils import timezone
 
 
+
 @router.message(F.text == "◀️ Выйти в меню")
 @router.message(Command("start"))
-async def start_handler(msg: Message, state: FSMContext):
+async def start_handler(msg: Message, state: FSMContext, command: CommandObject, bot: Bot):
     user_id = msg.from_user.id
     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
         user_id=user_id,
     )
+    referred_by_id = command.args
+    if created:
+        user.first_name = msg.from_user.first_name
+        user.last_name = msg.from_user.last_name
+        user.username = msg.from_user.username
+        user.save()
+        if user.referred_by is None and referred_by_id:
+            referred_user = await sync_to_async(TelegramUser.objects.get)(id=referred_by_id)
+            user.referred_by = referred_user
+            user.save()
+            await bot.send_message(referred_user.user_id, f"🎈 Пользователь @{user.username} зарегистрировался под "
+                                                          f"вашей ссылкой! \nВы просто великолепны! 💚", parse_mode=None)
+        print(referred_by_id)
     if user.is_admin:
+        payment = await sync_to_async(Payment.objects.get)(operator=user)
         await state.set_state(Chat.operator)
         print("ADMIN PANEL")
         order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
@@ -58,6 +73,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         await callback_query.message.answer(f"Сколько хотите купить?\nНапример: 0.260851", reply_markup=kb.iexit_kb)
 
         await state.set_state(BuyCryptoStates.awaiting_crypto_amount)
+        await callback_query.answer(f"Введите желаемое колличество {crypto_symbol}")
         if exchange.operator:
 
             print("EXCHANGE.OPERATOR", exchange.operator.user_id, exchange.operator.username, exchange.operator)
@@ -269,6 +285,55 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
                 await callback_query.message.delete()
                 await bot.send_message(user.user_id, "Прошу, напиши классный отзыв!)) 🌞")
 
+    if callback_query.data == "order_history":
+
+        page = 1  # Начальная страница
+        page_size = 3  # Количество отзывов на странице
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        exchanges = await sync_to_async(Exchange.objects.filter)(operator=user, confirmed=True)
+        total_pages = (len(exchanges) + page_size - 1) // page_size
+        if page < total_pages:
+            start_index = (page - 1) * page_size
+            end_index = start_index + page_size
+            exchanges = exchanges[start_index:end_index]
+            response_text = f"📔 Ваши заказы (страница {page} из {total_pages}):\n\n"
+            for i, exchange in enumerate(exchanges, start=start_index + 1):
+                payment = await sync_to_async(Payment.objects.get)(operator=exchange.operator)
+                text_id = f"Заказ {exchange.id}\n"
+                response_text += text_id
+                response_text += text.order_data_short.format(amount=exchange.amount, crypto=exchange.crypto,
+                                                        kgs_amount=exchange.kgs_amount, coms=payment.coms,
+                                                        full=exchange.kgs_amount)
+            builder = InlineKeyboardBuilder()
+            if page > 1:
+                builder.add(InlineKeyboardButton(text="Предыдущая", callback_data=f"exchange_prev_page_{page}"))
+            if page < total_pages:
+                builder.add(InlineKeyboardButton(text="Следующая", callback_data=f"exchange_next_page_{page}"))
+            builder.add(InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
+            a = (1, 1) if not page > 1 or not page < total_pages else (2, 1)
+            builder.adjust(*a)
+            await callback_query.message.answer(text=response_text, reply_markup=builder.as_markup())
+        if not exchanges:
+            await callback_query.answer("Вы не совершили ниодного обмена!")
+
+    if callback_query.data.startswith("exchange_next_page_"):
+        page = callback_query.data[19:]
+        page = int(callback_query.data.split("_")[3])
+
+        print("NEXT PAGE EXCHANGE", page)
+        page = int(page)
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+
+        await get_exchange_history(callback_query.message, page + 1, user)
+    if callback_query.data.startswith("exchange_prev_page_"):
+        page = callback_query.data[19:]
+        page = int(page)
+        print("PREV PAGE EXCHANGE", page)
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        await get_exchange_history(callback_query.message, page - 1, user)
+
+
+
 
 
 @router.message(BuyCryptoStates.awaiting_crypto_amount)
@@ -359,6 +424,41 @@ async def get_payments(message: Message, state: FSMContext, bot: Bot):
         builder.adjust(*a)
         await state.clear()
         await message.answer(text=response_text, reply_markup=builder.as_markup())
+
+
+async def get_exchange_history(message, page, user):
+    page_size = 3  # Количество отзывов на странице
+    exchanges = await sync_to_async(Exchange.objects.filter)(operator=user, confirmed=True)
+    total_pages = (len(exchanges) + page_size - 1) // page_size
+
+    if page <= total_pages:
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        exchanges = exchanges[start_index:end_index]
+        print("EXCHANGES", exchanges)
+
+        response_text = f"Реквизиты (страница {page} из {total_pages}):\n\n"
+        builder = InlineKeyboardBuilder()
+        for i, exchange in enumerate(exchanges, start=start_index + 1):
+            payment = await sync_to_async(Payment.objects.get)(operator=exchange.operator)
+            text_id = f"Заказ {exchange.id}\n"
+            print(text_id)
+            response_text += text_id
+            print("SHOWING PAYMENT", payment.operator.username, payment.coms, payment.usdt)
+            response_text += text.order_data_short.format(amount=exchange.amount, crypto=exchange.crypto,
+                                                          kgs_amount=exchange.kgs_amount, coms=payment.coms,
+                                                          full=exchange.kgs_amount)
+
+        if page > 1:
+            builder.add(InlineKeyboardButton(text="Предыдущая", callback_data=f"exchange_prev_page_{page}"))
+        if page < total_pages:
+            builder.add(InlineKeyboardButton(text="Следующая", callback_data=f"exchange_next_page_{page}"))
+        builder.add(InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase"))
+        a = (1, 1) if not page > 1 or not page < total_pages else (2, 1)
+        builder.adjust(*a)
+        await message.edit_text(text=response_text, reply_markup=builder.as_markup())
+    else:
+        await message.answer("Страницы с отзывами не существует.")
 
 
 async def get_reviews_page(message, page, user):
@@ -465,7 +565,7 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
             full=exchange.kgs_amount + payment.coms, mbank=payment.mbank, optima=payment.optima),
                                reply_markup=keyboard.as_markup())
         await bot.send_message(newest_user.user_id, message.text)
-    elif message.text.startswith("◀️ Отп"):
+    elif message.text.startswith("◀️ Отп") or message.text.startswith("◀️ Отп") and replied_message is not None:
         users = order.user.all()
         users = users.order_by('-last_activity')
         newest_user = users.first()
@@ -477,8 +577,16 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
             text_to_user = text.order_data.format(amount=exchange.amount, crypto=exchange.crypto,
                                  kgs_amount=exchange.kgs_amount, coms=payment.coms, full=exchange.kgs_amount + payment.coms,
                                  mbank=payment.mbank, optima=payment.optima)
-            await bot.send_message(chat_id=newest_user.user_id, text=text_to_user, reply_markup=kb.bought_ltc_operator)
-            await message.answer(text="ВЫ ОТПРАВИЛИ ЕМУ ОРДЕР:\n" + text_to_user)
+            if replied_message:
+                tg_message = await sync_to_async(TGMessage.objects.get)(message_id=replied_message.message_id - 1)
+                order.user.add(tg_message.sender)
+                order.save()
+                await bot.send_message(chat_id=tg_message.sender.user_id, text=text_to_user, reply_markup=kb.bought_ltc_operator)
+                await message.answer(text="ВЫ ОТПРАВИЛИ ЕМУ ОРДЕР:\n" + text_to_user)
+            else:
+                await bot.send_message(chat_id=newest_user.user_id, text=text_to_user,
+                                       reply_markup=kb.bought_ltc_operator)
+                await message.answer(text="ВЫ ОТПРАВИЛИ ЕМУ ОРДЕР:\n" + text_to_user)
         except Exception:
             keyboard = InlineKeyboardBuilder()
             keyboard.add(InlineKeyboardButton(text="LTC", callback_data="buy_ltc"))
@@ -524,6 +632,7 @@ async def send_command(msg: Message, state: FSMContext):
 @router.message(SendState.awaiting_text)
 async def handle_send_all(message: types.Message, state: FSMContext, bot: Bot):
     text_to_send = message.text
+    print(text_to_send)
 
     users = await sync_to_async(TelegramUser.objects.all)()
 

@@ -10,6 +10,7 @@ class TelegramUser(models.Model):
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     last_activity = models.DateTimeField(null=True, blank=True)
+    referred_by = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return self.username

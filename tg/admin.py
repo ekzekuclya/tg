@@ -13,7 +13,7 @@ class TGMessageAdmin(admin.ModelAdmin):
 
 @admin.register(TelegramUser)
 class TelegramAdmin(admin.ModelAdmin):
-    list_display = ['username', 'is_admin']
+    list_display = ['id', 'username', 'is_admin']
     list_filter = ['is_admin']
 
 
