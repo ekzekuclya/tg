@@ -680,7 +680,10 @@ async def add_permission(msg: Message, state: FSMContext):
     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
         user_id=msg.from_user.id,
     )
-    await state.set_state(OperatorAdd.awaiting_user_id)
+    if user.is_admin:
+        await state.set_state(OperatorAdd.awaiting_user_id)
+    else:
+        await msg.answer("Нет прав")
 
 
 @router.message(OperatorAdd.awaiting_user_id)
