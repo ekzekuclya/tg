@@ -20,11 +20,12 @@ async def main():
     from aiogram.enums.parse_mode import ParseMode
     from aiogram.fsm.storage.memory import MemoryStorage
     from tg import config
-    from tg.handlers import router
+    from tg.handlers import router as handlers_router
+    from tg.channels import router as channels_router
     from aiogram import Bot, Dispatcher
     bot = Bot(token=config.BOT_TOKEN, parse_mode=ParseMode.MARKDOWN)
     dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(router)
+    dp.include_routers(handlers_router, channels_router)
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(periodic_check_inactive_users())
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

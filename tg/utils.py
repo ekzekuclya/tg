@@ -4,7 +4,7 @@ from asgiref.sync import sync_to_async
 from .models import Chat, TelegramUser, Exchange
 from datetime import datetime, timedelta
 
-from pytz import timezone  # Импортируйте pytz
+from django.utils import timezone
 
 
 def get_ltc_price():
@@ -37,7 +37,10 @@ async def get_crypto_price(crypto_symbol, usdt):
 
     crypto_to_usd = data[crypto_key]['usd']
     crypto_to_kgs = crypto_to_usd * usdt
-    return crypto_to_kgs
+    print(crypto_to_kgs)
+    integer = int(crypto_to_kgs)
+    print(integer)
+    return integer
 
 
 async def return_bool(user):
@@ -52,9 +55,9 @@ async def return_bool(user):
 
 async def check_inactive_users():
     print("IM IN INACTIVE USERS")
-    utc = timezone('UTC')
-    now = utc.localize(datetime.now())
-    cutoff_time = timedelta(minutes=15)
+    now = timezone.now()
+    cutoff_time = timedelta(minutes=20)
+    print(cutoff_time, "CUTOFF_TIME")
 
     exchanges = await sync_to_async(Exchange.objects.filter)(confirmed=False)
 
@@ -64,6 +67,7 @@ async def check_inactive_users():
                 time_inactive = now - exchange.user.last_activity
                 if time_inactive > cutoff_time:
                     exchange.operator = None
+                    exchange.balance_used = None
                     exchange.save()
 
     chats = await sync_to_async(Chat.objects.filter)(is_active=True)
@@ -71,7 +75,7 @@ async def check_inactive_users():
         for user in chat.user.all():
             if user.last_activity:
                 time_inactive = now - user.last_activity
-                if time_inactive > cutoff_time:
+                if time_inactive >= cutoff_time:
                     print("REMOVED USER", user.username)
                     chat.user.remove(user)
             else:
@@ -79,12 +83,23 @@ async def check_inactive_users():
                 chat.user.remove(user)
 
 
+async def format_last_activity(last_activity):
+    now = timezone.now()
+    delta = now - last_activity
 
-photo = [PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADcwADMwQ',
-                   file_unique_id='AQAD9dExG6RiWEp4', width=90, height=90, file_size=1482),
-         PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADbQADMwQ',
-                   file_unique_id='AQAD9dExG6RiWEpy', width=320, height=320, file_size=24028),
-         PhotoSize(file_id='AgACAgIAAxkBAAIFV2VKv6orCN0L8QSybezlpx0rxrVzAAL10TEbpGJYSg4ihKLAZ06FAQADAgADeAADMwQ',
-                   file_unique_id='AQAD9dExG6RiWEp9', width=736, height=736, file_size=86045)]
+    if delta < timedelta(minutes=1):
+        return "Только что"
+    elif delta < timedelta(hours=1):
+        minutes = delta.seconds // 60
+        return f"{minutes} {'минут' if minutes % 10 != 1 or minutes == 11 else 'минуту'} назад"
+    elif delta < timedelta(days=1):
+        hours = delta.seconds // 3600
+        return f"{hours} {'часов' if hours % 10 != 1 or hours == 11 else 'час'} назад"
+    else:
+        days = delta.days
+        return f"{days} {'дней' if days % 10 != 1 or days == 11 else 'день'} назад"
+
+
+
 
 

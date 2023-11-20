@@ -1,8 +1,8 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 menu = [
-    [InlineKeyboardButton(text="💳 Купить LTC", callback_data="buy_ltc")],
-    [InlineKeyboardButton(text="💳 Купить BTC", callback_data="buy_btc")],
-    [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")],
+    [InlineKeyboardButton(text="⚡️ LTC ⚡️", callback_data="buy_ltc")],
+    [InlineKeyboardButton(text="⚡️ BTC ⚡️", callback_data="buy_btc")],
+    [InlineKeyboardButton(text="💰  Баланс  💸", callback_data="balance")],
     [InlineKeyboardButton(text="💎 Связаться с оператором", callback_data="operator")]
 ]
 
@@ -14,7 +14,7 @@ card = InlineKeyboardMarkup(inline_keyboard=card_i)
 
 buy_ltc = [
     [InlineKeyboardButton(text="Подтверждаю", callback_data="confirm_purchase_ltc")],
-    [InlineKeyboardButton(text="Отмена", callback_data="cancel_purchase")]
+    [InlineKeyboardButton(text="Отмена", callback_data="back")]
 ]
 
 buy_btc = [

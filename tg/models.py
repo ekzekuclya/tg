@@ -11,9 +11,11 @@ class TelegramUser(models.Model):
     is_active = models.BooleanField(default=True)
     last_activity = models.DateTimeField(null=True, blank=True)
     referred_by = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True)
+    balance = models.PositiveIntegerField(default=0)
+    operator_balance = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return self.username
+        return self.username if self.username else "None"
 
     class Meta:
         ordering = ['-last_activity']
@@ -37,7 +39,7 @@ class Exchange(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     user_photo = models.CharField(max_length=2555, null=True, blank=True)
     operator_photo = models.CharField(max_length=2555, null=True, blank=True)
-
+    balance_used = models.IntegerField(default=None, null=True, blank=True)
 
 class CurrentUsdtCourse(models.Model):
     usdt = models.FloatField()
