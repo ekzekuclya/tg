@@ -63,7 +63,8 @@ async def start_handler(msg: Message, state: FSMContext, command: CommandObject,
     except Exception as e:
         print("PHOTO DID NOT SENT")
     await msg.answer(text.greet_operator.format(name=msg.from_user.username) if user.is_admin
-                     else text.greet.format(name=msg.from_user.full_name), reply_markup=kb.operator_i if user.is_admin
+                     else text.greet.format(name=msg.from_user.username if msg.from_user.username else msg.from_user.full_name),
+                     reply_markup=kb.operator_i if user.is_admin
                      else kb.menu, parse_mode=ParseMode.MARKDOWN)
     await state.clear()
 
@@ -398,7 +399,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         referred_users = await sync_to_async(TelegramUser.objects.filter)(referred_by=user)
         balance_text = "➨ ➨ ➨💲*BALANCE* ©️"
         balance_text += "\n\n🟡 *Вы пригласили* ➩ `{}` _пользователей_\n💰 *Баланс* ➩ `{}`\n\n👇 *Ваша реферальная ссылка* 👇 \n\n`{}`".format(
-            referred_users.count(), user.balance, "https://t.me/testsfjdjfdgdbot?start={}".format(user.id))
+            referred_users.count(), user.balance, "https://t.me/BestChangeKgz_bot?start={}".format(user.id))
         balance_text += f"\n\n\n*Приглашай друзей и получай с них кэшбек!*\n\n_За каждого приглашенного друга_ *40* _сом_"
         keyboard = InlineKeyboardBuilder()
         keyboard.add(InlineKeyboardButton(text="Приглашенные пользователи", callback_data="show_referrals"))
