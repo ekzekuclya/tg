@@ -1,3 +1,5 @@
+import secrets
+
 from django.db import models
 
 
@@ -62,4 +64,13 @@ class Payment(models.Model):
     coms = models.IntegerField(null=True, blank=True)
 
 
+class Promo(models.Model):
+    promo_text = models.CharField(max_length=5, unique=True)
+    amount = models.PositiveIntegerField()
+    used = models.BooleanField(default=False)
 
+    def save(self, *args, **kwargs):
+        self.promo_text = secrets.token_urlsafe(5)
+        while Promo.objects.filter(promo_text=self.promo_text).exists():
+            self.promo_text = secrets.token_urlsafe(5)
+        super().save(*args, **kwargs)

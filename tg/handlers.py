@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 from .config import CHANNEL_ID
-from .states import BuyCryptoStates, SendState, OperatorAdd, Chat, SendStateOperator, PaymentState, UserPayed
+from .states import BuyCryptoStates, SendState, OperatorAdd, Chat, SendStateOperator, PaymentState, UserPayed, \
+    PromoCodeAdmin, PromoCodeUser
 from aiogram import types, Router, Bot, F
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
@@ -14,7 +15,7 @@ from asgiref.sync import sync_to_async
 from aiogram.enums.parse_mode import ParseMode
 from django.db import IntegrityError
 from . import kb, text
-from .models import TelegramUser, Chat as Order, Exchange, CurrentUsdtCourse, TGMessage, Payment
+from .models import TelegramUser, Chat as Order, Exchange, CurrentUsdtCourse, TGMessage, Payment, Promo
 from .utils import get_crypto_price, return_bool, format_last_activity
 import asyncio
 router = Router()
@@ -465,7 +466,8 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
                                    text=f"Пользователь {user.username} присоединился в чат", parse_mode=None)
             await callback_query.message.edit_text("👍 Оператор с вами, просто пишите в чат, ждём фото чека \n\n" + text.order_data.format(
                 amount=exchange.amount, crypto=exchange.crypto, kgs_amount=exchange.kgs_amount, coms=payment.coms,
-                full=exchange.kgs_amount + payment.coms, mbank=payment.mbank, optima=payment.optima),
+                full=exchange.kgs_amount + payment.coms - exchange.balance_used if exchange.balance_used else
+                exchange.kgs_amount + payment.coms, mbank=payment.mbank, optima=payment.optima),
                                  reply_markup=builder.as_markup())
         elif payments.count() == 1:
             payment = payments.first()
@@ -534,6 +536,46 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
         for i in referrals:
             referrals_text += f"{count}. @{i.username}"
         await callback_query.message.answer(text=referrals_text if referrals else "У вас нет приглаенных друзей")
+
+    if callback_query.data == "promo-code-user":
+        await callback_query.message.answer("Введите промокод")
+        await state.set_state(PromoCodeUser.awaiting_promo)
+
+    if callback_query.data == "promo-code-admin":
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=callback_query.from_user.id)
+        if user.is_admin:
+            await callback_query.message.answer("Пишите сумму $ для промо кода")
+            await state.set_state(PromoCodeAdmin.awaiting_sum)
+
+
+@router.message(PromoCodeAdmin.awaiting_sum)
+async def create_promo(msg: Message, state: FSMContext):
+    try:
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
+        if user.is_admin:
+            sum_of_promo = msg.text
+            promo = await sync_to_async(Promo.objects.create)(amount=sum_of_promo)
+            await msg.answer(f"Вы создали промокод: `{promo.promo_text}`\nСумма ${sum_of_promo}")
+            await state.clear()
+    except Exception as e:
+        await msg.answer("Введите вверный формат, например число")
+
+
+@router.message(PromoCodeUser.awaiting_promo)
+async def add_promo_to_balance(msg: Message, state: FSMContext):
+    try:
+        user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
+        promo_code = msg.text
+        promo = await sync_to_async(Promo.objects.get)(promo_text=promo_code)
+        if not promo.used:
+            user.balance += promo.amount
+            user.save()
+            promo.used = True
+            promo.save()
+            await msg.answer(f"${promo.amount} добавлен в ваш баланс")
+            await state.clear()
+    except Exception as e:
+        await msg.answer("Неверный промокод")
 
 
 @router.message(BuyCryptoStates.awaiting_crypto_amount)

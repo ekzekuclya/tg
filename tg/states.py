@@ -33,3 +33,11 @@ class OperatorAdd(StatesGroup):
 class UserPayed(StatesGroup):
     awaiting_photo = State()
 
+
+class PromoCodeUser(StatesGroup):
+    awaiting_promo = State()
+
+
+class PromoCodeAdmin(StatesGroup):
+    awaiting_sum = State()
+
