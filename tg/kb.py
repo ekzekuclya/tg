@@ -61,4 +61,4 @@ not_subscribed = [
     [InlineKeyboardButton(text="Подписаться", url="https://t.me/bestchangekgz"),
      InlineKeyboardButton(text="Проверить", callback_data="check_subs")]
 ]
-
+not_subscribed = InlineKeyboardMarkup(inline_keyboard=not_subscribed)
