@@ -26,7 +26,10 @@ async def main():
     bot = Bot(token=config.BOT_TOKEN, parse_mode=ParseMode.MARKDOWN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_routers(handlers_router, channels_router)
-    await bot.delete_webhook(drop_pending_updates=True)
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        print(f"An error occurred: {e}")
     asyncio.create_task(periodic_check_inactive_users())
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

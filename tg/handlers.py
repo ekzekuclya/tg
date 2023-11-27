@@ -29,49 +29,57 @@ async def start_handler(msg: Message, state: FSMContext, command: CommandObject,
     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
         user_id=user_id,
     )
-
+    is_subscribed = await bot.get_chat_member(chat_id="@BestChangeKgz", user_id=msg.from_user.id)
     referred_by_id = command.args
-    if created:
-        user.first_name = msg.from_user.first_name
-        user.last_name = msg.from_user.last_name
-        user.username = msg.from_user.username
-        user.save()
-        if user.referred_by is None and referred_by_id:
-            referred_user = await sync_to_async(TelegramUser.objects.get)(id=referred_by_id)
-            user.referred_by = referred_user
+    if is_subscribed.status in ['member', 'administrator', 'creator']:
+        if created:
+            user.first_name = msg.from_user.first_name
+            user.last_name = msg.from_user.last_name
+            user.username = msg.from_user.username
             user.save()
-            await bot.send_message(referred_user.user_id, f"🎈 Пользователь @{user.username} зарегистрировался под "
-                                                          f"вашей ссылкой! \nВы просто великолепны! 💚", parse_mode=None)
-        print(referred_by_id)
-    if user.is_admin:
+            if user.referred_by is None and referred_by_id:
+                referred_user = await sync_to_async(TelegramUser.objects.get)(id=referred_by_id)
+                user.referred_by = referred_user
+                user.save()
+                await bot.send_message(referred_user.user_id, f"🎈 Пользователь @{user.username} зарегистрировался под "
+                                                              f"вашей ссылкой! \nВы просто великолепны! 💚", parse_mode=None)
+            print(referred_by_id)
+        if user.is_admin:
 
-        await state.set_state(Chat.operator)
-        print("ADMIN PANEL")
-        order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
+            await state.set_state(Chat.operator)
+            print("ADMIN PANEL")
+            order, _ = await sync_to_async(Order.objects.get_or_create)(operator=user)
 
-    if user:
-        user.first_name = msg.from_user.first_name
-        user.last_name = msg.from_user.last_name
-        user.username = msg.from_user.username
-        user.last_activity = timezone.now()
-        user.save()
-        print("user in /start")
-        print(user.first_name, user.last_name if user.last_name is not None else '', user.username)
-    try:
-        photo_id = "AgACAgIAAxkBAAIVdWVQJD5HZcULlEVlPM9oYAENoY1_AAKb0jEbZJCASsd3CKpCrSO4AQADAgADcwADMwQ"
-        await bot.send_photo(chat_id=msg.from_user.id, photo=photo_id)
+        if user:
+            user.first_name = msg.from_user.first_name
+            user.last_name = msg.from_user.last_name
+            user.username = msg.from_user.username
+            user.last_activity = timezone.now()
+            user.save()
+            print("user in /start")
+            print(user.first_name, user.last_name if user.last_name is not None else '', user.username)
+        try:
+            photo_id = "AgACAgIAAxkBAAIVdWVQJD5HZcULlEVlPM9oYAENoY1_AAKb0jEbZJCASsd3CKpCrSO4AQADAgADcwADMwQ"
+            await bot.send_photo(chat_id=msg.from_user.id, photo=photo_id)
 
-    except Exception as e:
-        print("PHOTO DID NOT SENT")
-    await msg.answer(text.greet_operator.format(name=msg.from_user.username) if user.is_admin
-                     else text.greet.format(name=msg.from_user.username if msg.from_user.username else msg.from_user.full_name),
-                     reply_markup=kb.operator_i if user.is_admin
-                     else kb.menu, parse_mode=ParseMode.MARKDOWN)
-    await state.clear()
+        except Exception as e:
+            print("PHOTO DID NOT SENT")
+        await msg.answer(text.greet_operator.format(name=msg.from_user.username) if user.is_admin
+                         else text.greet.format(name=msg.from_user.username if msg.from_user.username else msg.from_user.full_name),
+                         reply_markup=kb.operator_i if user.is_admin
+                         else kb.menu, parse_mode=ParseMode.MARKDOWN)
+        await state.clear()
+    else:
+        await msg.answer("Подпишитесь на канал", reply_markup=kb.not_subscribed)
 
 
 @router.callback_query()
 async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
+    if callback_query.data == "check_subs":
+        is_subscribed = await bot.get_chat_member(chat_id="@BestChangeKgz", user_id=callback_query.from_user.id)
+        if is_subscribed.status in ['member', 'administrator', 'creator']:
+            await callback_query.message.edit_text("Вы подписаны, можете пользоваться", reply_markup=kb.menu)
+
     if callback_query.data in ["buy_ltc", "buy_btc"]:
         user, _ = await sync_to_async(TelegramUser.objects.get_or_create)(user_id=callback_query.from_user.id)
         exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
@@ -134,6 +142,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
             order_kb = InlineKeyboardMarkup(inline_keyboard=order_i)
             print(exchange.user, exchange.id)
             print("EXCHANGE CRYPTO", exchange.crypto)
+
             response_text = text.exchange_text.format(amount=exchange.amount, crypto=exchange.crypto.upper(),
                                                 kgs_amount=int(exchange.kgs_amount), coms=payment.coms,
                                                 full=int(exchange.kgs_amount + payment.coms))
@@ -226,7 +235,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
                 amount=exchange.amount, crypto=exchange.crypto, kgs_amount=exchange.kgs_amount, coms=
                 payment.coms, full=exchange.kgs_amount + payment.coms - exchange.balance_used)
             awaiting_kvitto += f"\n🚩 *Использован баланс* 🟰 {exchange.balance_used}"
-            awaiting_kvitto += '\n\n 🟡 Пользователь отметил "*Оплатил*"'
+            awaiting_kvitto += f"\n\n 🟡 @{user.username if user.username else callback_query.from_user.full_name} отметил *Оплатил*"
             await bot.send_message(exchange.operator.user_id, text=awaiting_kvitto, reply_markup=keyboard.as_markup())
             await state.set_state(UserPayed.awaiting_photo)
             return
@@ -234,7 +243,7 @@ async def handle_callback_query(callback_query: types.CallbackQuery, state: FSMC
                                                      optima=payment.optima)
         awaiting_kvitto += "\n\n✅✅☑️ *ПОДТВЕРЖДЕНИЕ*"
         await callback_query.message.edit_text(awaiting_kvitto)
-        awaiting_kvitto += "\n\n 🟡 Пользователь отметил *Оплатил*"
+        awaiting_kvitto += f"\n\n 🟡 @{user.username if user.username else callback_query.from_user.full_name} отметил *Оплатил*"
         await bot.send_message(exchange.operator.user_id, text=awaiting_kvitto, reply_markup= keyboard.as_markup())
         await state.set_state(UserPayed.awaiting_photo)
 
@@ -798,6 +807,9 @@ async def user_chat(msg: Message, state: FSMContext, bot: Bot):
     user = await sync_to_async(TelegramUser.objects.get)(user_id=msg.from_user.id)
     exchange, _ = await sync_to_async(Exchange.objects.get_or_create)(user=user, confirmed=False)
     tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=msg.message_id, sender=user)
+    if msg.text:
+        tg_message.text = msg.text
+        tg_message.save()
     photo = msg.photo
     print("PHOTO", photo)
     user.last_activity = timezone.now()
@@ -840,6 +852,10 @@ async def chat_operator(message: types.Message, state: FSMContext, bot: Bot):
     order = await sync_to_async(Order.objects.get)(operator=operator, is_active=True)
     replied_message = message.reply_to_message
     photo = message.photo
+    tg_message, created = await sync_to_async(TGMessage.objects.get_or_create)(message_id=message.message_id, sender=operator)
+    if message.text:
+        tg_message.text = message.text
+        tg_message.save()
     if photo is not None:
         users = order.user.all()
         users = users.order_by('-last_activity')
@@ -964,23 +980,45 @@ async def handle_send_all(message: types.Message, state: FSMContext, bot: Bot):
     print(text_to_send)
 
     users = await sync_to_async(TelegramUser.objects.all)()
-
+    response_text = ""
     for user in users:
         try:
             chat_member = await bot.get_chat_member(user.user_id, user.user_id)
             if chat_member.status != "left" and chat_member.status != "kicked":
                 # Пользователь не заблокировал бота, отправляем сообщение
-                await bot.send_message(user.user_id, text_to_send)
-                await message.answer(f"Сообщение отправлено пользователю: {user.username}")
+                await bot.send_message(user.user_id, text_to_send, parse_mode=None)
+                response_text += f"Сообщение отправлено пользователю: {user.username}\n"
             else:
                 await message.answer(f"Сообщение НЕ отправлено: {user.username}")
                 print(f"Пользователь {user.username} заблокировал бота")
         except Exception as e:
+            await message.answer(response_text)
             print(f"Ошибка при отправке сообщения пользователю {user.username}: {str(e)}")
 
     await message.answer(f"Вы отправили сообщение:\n\n{text_to_send}\n\nвсем пользователям в боте.")
     await state.clear()
 
+
+# @router.message(Command("users"))
+# async def send_users(msg: Message):
+#     user_id = msg.from_user.id
+#     username = msg.from_user.username
+#
+#     user, created = await sync_to_async(TelegramUser.objects.get_or_create)(
+#         user_id=user_id,
+#         username=username
+#     )
+#     if user.is_admin:
+#         users = await sync_to_async(TelegramUser.objects.all)()
+#         count = 1
+#         response_text = ""
+#         for user in users:
+#             if user.is_admin:
+#                 response_text += f"{count} {user.username} ------ HAS ADMIN PERMISSIONS\n"
+#                 count += 1
+#             else:
+#                 response_text += f"{count} {user.username}\m"
+#                 count += 1
 
 @router.message(Command("users"))
 async def send_users(msg: Message):
@@ -994,15 +1032,26 @@ async def send_users(msg: Message):
     if user.is_admin:
         users = await sync_to_async(TelegramUser.objects.all)()
         count = 1
+        response_text = ""
+
         for user in users:
             if user.is_admin:
-                await msg.answer(text=f"{count} {user.username} ------ HAS ADMIN PERMISSIONS", parse_mode=None)
-                count += 1
+                response_text += f"{count} {user.username} ------ HAS ADMIN PERMISSIONS\n"
             else:
-                await msg.answer(text=f"{count} {user.username}", parse_mode=None)
-                count += 1
-    else:
-        await msg.answer("У вас нет прав!")
+                response_text += f"{count} {user.username}\n"
+            count += 1
+
+            # Отправляем сообщение с информацией о пользователях каждые 50 пользователей
+            if count % 50 == 0:
+                await msg.answer(response_text)
+                response_text = ""
+
+        # Отправляем оставшуюся часть сообщения, если есть
+        if response_text:
+            await msg.answer(response_text)
+
+        # Сообщение о завершении расчёта
+        await msg.answer("Расчёт пользователей завершён.")
 
 
 @router.message(Command("permission"))

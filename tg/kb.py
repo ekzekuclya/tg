@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 menu = [
     [InlineKeyboardButton(text="⚡️ LTC ⚡️", callback_data="buy_ltc")],
     [InlineKeyboardButton(text="⚡️ BTC ⚡️", callback_data="buy_btc")],
+    [InlineKeyboardButton(text="💲Продать crypto💲(скоро)", callback_data="sell_crypto")],
     [InlineKeyboardButton(text="💰  Баланс  💸", callback_data="balance")],
     [InlineKeyboardButton(text="💎 Связаться с оператором", callback_data="operator")]
 ]
@@ -56,5 +57,8 @@ menu = InlineKeyboardMarkup(inline_keyboard=menu)
 
 send_order = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="◀️ Отправить ордер")]], resize_keyboard=True)
 
-
+not_subscribed = [
+    [InlineKeyboardButton(text="Подписаться", url="https://t.me/bestchangekgz"),
+     InlineKeyboardButton(text="Проверить", callback_data="check_subs")]
+]
 

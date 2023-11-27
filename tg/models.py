@@ -43,6 +43,7 @@ class Exchange(models.Model):
     operator_photo = models.CharField(max_length=2555, null=True, blank=True)
     balance_used = models.IntegerField(default=None, null=True, blank=True)
 
+
 class CurrentUsdtCourse(models.Model):
     usdt = models.FloatField()
     coms = models.IntegerField()

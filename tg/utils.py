@@ -3,7 +3,6 @@ from aiogram.types import PhotoSize
 from asgiref.sync import sync_to_async
 from .models import Chat, TelegramUser, Exchange
 from datetime import datetime, timedelta
-
 from django.utils import timezone
 
 

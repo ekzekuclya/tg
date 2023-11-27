@@ -30,7 +30,7 @@ class CurrentUsdtCourseAdmin(admin.ModelAdmin):
 
 @admin.register(Exchange)
 class ExchangeAdmin(admin.ModelAdmin):
-    list_display = ['crypto']
+    list_display = ['crypto', 'confirmed']
 #
 #
 # @admin.register(CurrentUsdtCourse)
