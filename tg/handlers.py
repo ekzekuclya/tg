@@ -984,7 +984,7 @@ async def handle_send_all(message: types.Message, state: FSMContext, bot: Bot):
     for user in users:
         try:
             chat_member = await bot.get_chat_member(user.user_id, user.user_id)
-            if chat_member.status != "left" and chat_member.status != "kicked":
+            if chat_member.status not in ["left", "kicked", "restricted"]:
                 # Пользователь не заблокировал бота, отправляем сообщение
                 await bot.send_message(user.user_id, text_to_send, parse_mode=None)
                 response_text += f"Сообщение отправлено пользователю: {user.username}\n"
@@ -1035,16 +1035,18 @@ async def send_users(msg: Message):
         response_text = ""
 
         for user in users:
-            if user.is_admin:
-                response_text += f"{count} {user.username} ------ HAS ADMIN PERMISSIONS\n"
-            else:
-                response_text += f"{count} {user.username}\n"
-            count += 1
-
-            # Отправляем сообщение с информацией о пользователях каждые 50 пользователей
-            if count % 50 == 0:
-                await msg.answer(response_text)
-                response_text = ""
+            chat_member = await bot.get_chat_member(user.user_id, user.user_id)
+            if chat_member.status not in ["left", "kicked", "restricted"]:
+                if user.is_admin:
+                    response_text += f"{count} {user.username if user.username else user.user_id} ------ HAS ADMIN PERMISSIONS\n"
+                else:
+                    response_text += f"{count} {user.username if user.username else user.user_id}\n"
+                count += 1
+    
+                # Отправляем сообщение с информацией о пользователях каждые 50 пользователей
+                if count % 50 == 0:
+                    await msg.answer(response_text)
+                    response_text = ""
 
         # Отправляем оставшуюся часть сообщения, если есть
         if response_text:
@@ -1236,7 +1238,7 @@ async def state_holder(message: Message, state: FSMContext, bot: Bot):
                 users = order.user.all()
                 users = users.order_by('-last_activity')
                 newest_user = users.first()
-                if newest_user.user:
+                if newest_user is not None:
                     await bot.send_message(newest_user.user_id, message.text)
                 await state.set_state(Chat.operator)
         # if not user.is_admin:
