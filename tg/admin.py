@@ -30,7 +30,7 @@ class CurrentUsdtCourseAdmin(admin.ModelAdmin):
 
 @admin.register(Exchange)
 class ExchangeAdmin(admin.ModelAdmin):
-    list_display = ['crypto', 'confirmed', 'user.username' if 'user.username' else 'None']
+    list_display = ['crypto', 'confirmed', 'user' if 'user' else 'None']
 #
 #
 # @admin.register(CurrentUsdtCourse)
